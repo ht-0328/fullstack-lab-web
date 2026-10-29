@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: bff
+  mvc:
+    # 入力エラーなども RFC 9457 (Problem Details) 形式で返す（API と同じ）
+    problemdetails:
+      enabled: true
+
+server:
+  port: 8080
+
+app:
+  api:
+    base-url: ${API_BASE_URL}
+  authz:
+    base-url: ${AUTHZ_BASE_URL}
+  # 認証 API（アカウントの登録・パスワード変更）。JWT の検証設定（app.auth）とは別物
+  auth-api:
+    base-url: ${AUTH_API_BASE_URL}
+  auth:
+    token-header: x-amzn-oidc-accesstoken
+    issuers:
+      # 一般利用者（マイページ）。本番も Keycloak
+      customer:
+        issuer-uri: ${CUSTOMER_ISSUER_URI}
+        jwk-set-uri: ${CUSTOMER_JWK_SET_URI}
+        audience: ${CUSTOMER_AUDIENCE}
+        user-type: CUSTOMER
+        roles-claim: realm_access.roles
+      # 社員（管理画面）。本番は Okta、ローカルは Okta と同じく groups クレームを出す Keycloak の realm
+      staff:
+        issuer-uri: ${STAFF_ISSUER_URI}
+        jwk-set-uri: ${STAFF_JWK_SET_URI}
+        audience: ${STAFF_AUDIENCE}
+        user-type: STAFF
+        roles-claim: groups
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  pattern:
+    level: "%5p [requestId=%X{requestId:-}]"

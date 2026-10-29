@@ -1,0 +1,22 @@
+{
+  "name": "fullstack-lab-frontend",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "generate:bff": "openapi-typescript ../openapi/bff.yaml -o app/types/bff.d.ts",
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "preview": "nuxt preview",
+    "typecheck": "nuxt typecheck",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "nuxt": "4.6.1",
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "vue-tsc": "3.3.13"
+  }
+}

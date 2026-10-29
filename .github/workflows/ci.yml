@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: 画面の型チェック（OpenAPI から型を生成）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - run: docker build --target typecheck -f frontend/Dockerfile .
+
+  bff:
+    name: BFF の単体テスト（publish 済みクライアントを取得）
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      # api / authz リポジトリの CI が publish した成果物を GitHub Packages から取得する（AWS では CodeArtifact）
+      MAVEN_REPO_URL: https://maven.pkg.github.com/${{ github.repository_owner }}/*
+      MAVEN_REPO_USER: ${{ github.actor }}
+      MAVEN_REPO_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: 資格情報は build secret で渡す（イメージに残らない）
+        run: |
+          docker build --target test --network host \
+            --build-arg "MAVEN_REPO_URL=$MAVEN_REPO_URL" \
+            --secret id=maven_repo_user,env=MAVEN_REPO_USER \
+            --secret id=maven_repo_password,env=MAVEN_REPO_PASSWORD \
+            -f bff/Dockerfile .

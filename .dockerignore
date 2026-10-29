@@ -1,0 +1,8 @@
+**/node_modules
+**/.nuxt
+**/.output
+**/build
+**/.gradle
+**/.kotlin
+**/*.md
+e2e

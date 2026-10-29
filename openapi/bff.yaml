@@ -1,0 +1,241 @@
+openapi: 3.0.3
+info:
+  title: fullstack-lab BFF
+  version: 1.1.0
+  description: |
+    画面専用の API。ブラウザ（Nginx / ALB 経由）と Nuxt の SSR から呼ばれる。
+    認証は前段（ローカル: oauth2-proxy、AWS: ALB）が済ませ、BFF はヘッダー x-amzn-oidc-accesstoken の JWT を検証する。
+    この仕様から、BFF のコントローラーのインターフェースと DTO（Kotlin）、画面の型（TypeScript）を生成する。
+servers:
+  - url: /
+    description: 画面と同一オリジン
+tags:
+  - name: signup
+    description: 会員登録（未認証で呼べる唯一の操作。入口の Nginx / ALB が認証なしで転送し、BFF も認証を要求しない）
+  - name: me
+    description: ログイン中の利用者
+  - name: tasks
+    description: タスク
+paths:
+  /bff/signup:
+    post:
+      tags: [signup]
+      operationId: signup
+      summary: 会員登録（BFF → 認証 API → Keycloak）。登録後は通常のログインへ誘導する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignupInput' }
+      responses:
+        '201':
+          description: 登録済み
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignupResult' }
+        '400':
+          $ref: '#/components/responses/Problem'
+        '409':
+          description: メールアドレスが登録済み
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+  /bff/me:
+    get:
+      tags: [me]
+      operationId: getMe
+      summary: ログイン中の利用者と、画面の出し分けに使う権限
+      responses:
+        '200':
+          description: 利用者情報
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeView' }
+        '401':
+          $ref: '#/components/responses/Problem'
+  /bff/me/password:
+    put:
+      tags: [me]
+      operationId: changePassword
+      summary: ログイン中の利用者のパスワード変更（一般利用者のみ。社員のアカウントは IdP 側で管理する）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordInput' }
+      responses:
+        '204':
+          description: 変更済み
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          description: 認可 API が拒否した（社員など）、または現在のパスワードが違う
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+  /bff/tasks:
+    get:
+      tags: [tasks]
+      operationId: listTasks
+      summary: タスク一覧（一般利用者は自分の分だけ、社員は全件）
+      responses:
+        '200':
+          description: 新しい順
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TaskSummaryView' }
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+    post:
+      tags: [tasks]
+      operationId: createTask
+      summary: タスク登録
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTaskInput' }
+      responses:
+        '201':
+          description: 登録済み
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskSummaryView' }
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+  /bff/tasks/{id}:
+    get:
+      tags: [tasks]
+      operationId: getTaskDetail
+      summary: タスク詳細（外部サービスの補足情報を集約）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: 詳細
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskDetailView' }
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          description: 存在しない、または閲覧を許可されていない（区別しない）
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetail' }
+components:
+  responses:
+    Problem:
+      description: エラー（RFC 9457）
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }
+  schemas:
+    UserType:
+      type: string
+      enum: [CUSTOMER, STAFF]
+    DueDateInfoStatus:
+      type: string
+      enum: [AVAILABLE, NO_DUE_DATE, UNAVAILABLE]
+      description: AVAILABLE = 取得できた、NO_DUE_DATE = 期限日なし、UNAVAILABLE = 外部サービス障害で取得できなかった（縮退）
+    Capabilities:
+      type: object
+      description: 画面の出し分け用。実際の守りは BFF と認可 API が担う
+      required: [canCreateTask, canChangePassword]
+      properties:
+        canCreateTask: { type: boolean }
+        canChangePassword: { type: boolean }
+    MeView:
+      type: object
+      required: [userId, name, userType, roles, capabilities]
+      properties:
+        userId: { type: string }
+        name: { type: string }
+        userType: { $ref: '#/components/schemas/UserType' }
+        roles:
+          type: array
+          items: { type: string }
+        capabilities: { $ref: '#/components/schemas/Capabilities' }
+    TaskSummaryView:
+      type: object
+      description: 一覧用。画面に不要な項目（説明文など）は含めない
+      required: [id, title, createdByName]
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        dueDate: { type: string, format: date, nullable: true }
+        createdByName: { type: string }
+    DueDateInfo:
+      type: object
+      required: [date, businessDay]
+      properties:
+        date: { type: string, format: date }
+        businessDay: { type: boolean }
+        holidayName: { type: string, nullable: true }
+    TaskDetailView:
+      type: object
+      required: [id, title, createdByName, createdAt, dueDateInfoStatus]
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        dueDate: { type: string, format: date, nullable: true }
+        createdByName: { type: string }
+        createdAt: { type: string, format: date-time }
+        dueDateInfoStatus: { $ref: '#/components/schemas/DueDateInfoStatus' }
+        dueDateInfo:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/DueDateInfo'
+    SignupInput:
+      type: object
+      required: [email, familyName, givenName, password]
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          pattern: '^[^@ ]+@[^@ ]+[.][^@ ]+$'
+          description: ログイン ID を兼ねる
+        familyName: { type: string, minLength: 1, maxLength: 50 }
+        givenName: { type: string, minLength: 1, maxLength: 50 }
+        password: { type: string, format: password, minLength: 8, maxLength: 128 }
+    SignupResult:
+      type: object
+      required: [userId, email]
+      properties:
+        userId: { type: string, description: ログイン後の JWT の sub と同じ }
+        email: { type: string }
+    ChangePasswordInput:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: { type: string, format: password, minLength: 1, maxLength: 128 }
+        newPassword: { type: string, format: password, minLength: 8, maxLength: 128 }
+    CreateTaskInput:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 1000, nullable: true }
+        dueDate: { type: string, format: date, nullable: true }
+    ProblemDetail:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }

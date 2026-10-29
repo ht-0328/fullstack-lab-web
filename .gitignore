@@ -1,0 +1,21 @@
+# Gradle / Kotlin（OpenAPI から生成したコードは bff/src/generated にあり、git で管理する）
+**/.gradle/
+**/build/
+**/.kotlin/
+
+# Node / Nuxt
+**/node_modules/
+**/.nuxt/
+**/.output/
+**/.data/
+**/.nitro/
+
+# Playwright の実行結果
+e2e/test-results/
+e2e/playwright-report/
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
