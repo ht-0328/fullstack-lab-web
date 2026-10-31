@@ -44,36 +44,24 @@ class TaskViewService(
     }
 
     fun detail(user: CurrentUser, id: Long): TaskDetailView {
-        val task = try {
-            tasksApi.getTask(id)
-        } catch (e: HttpClientErrorException.NotFound) {
-            throw TaskNotFoundException(id)
-        }
+        val task = findTask(id)
         // 他人のタスクは「存在しない」と同じ応答にし、ID の存在自体を推測させない
         val decision = authzClient.decide(user, "task:read", task.createdBy)
         if (!decision.allowed) {
             log.info("task {} hidden from {}: {}", id, user.id, decision.reason)
             throw TaskNotFoundException(id)
         }
-        val (status, info) = when {
-            task.dueDate == null -> DueDateInfoStatus.NO_DUE_DATE to null
-            else -> try {
-                DueDateInfoStatus.AVAILABLE to tasksApi.getTaskDueDateInfo(id).toView()
-            } catch (e: RestClientException) {
-                log.warn("due date info unavailable for task {}: {}", id, e.message)
-                DueDateInfoStatus.UNAVAILABLE to null
-            }
-        }
-        return TaskDetailView(
-            id = task.id,
-            title = task.title,
-            description = task.description,
-            dueDate = task.dueDate,
-            createdByName = task.createdByName,
-            createdAt = task.createdAt,
-            dueDateInfoStatus = status,
-            dueDateInfo = info,
-        )
+        return toDetailView(user, task)
+    }
+
+    /**
+     * タスクを完了にする。所有者を知るために先に API から取得し、認可 API が許可したときだけ完了を呼ぶ。
+     * 既に完了していれば API が何もせず現状を返す（冪等）ので、BFF では区別しない
+     */
+    fun complete(user: CurrentUser, id: Long): TaskDetailView {
+        val task = findTask(id)
+        authorize(user, "task:complete", task.createdBy)
+        return toDetailView(user, tasksApi.completeTask(id))
     }
 
     fun create(user: CurrentUser, input: CreateTaskInput): TaskSummaryView {
@@ -87,7 +75,41 @@ class TaskViewService(
         if (!decision.allowed) throw ForbiddenException("$action denied: ${decision.reason}")
     }
 
-    private fun ApiTask.toSummary() = TaskSummaryView(id = id, title = title, dueDate = dueDate, createdByName = createdByName)
+    private fun findTask(id: Long): ApiTask = try {
+        tasksApi.getTask(id)
+    } catch (e: HttpClientErrorException.NotFound) {
+        throw TaskNotFoundException(id)
+    }
+
+    /** 詳細画面向けに、期限日の補足情報（縮退あり）と、完了ボタンの出し分け（canComplete）を組み立てる */
+    private fun toDetailView(user: CurrentUser, task: ApiTask): TaskDetailView {
+        val (status, info) = when {
+            task.dueDate == null -> DueDateInfoStatus.NO_DUE_DATE to null
+            else -> try {
+                DueDateInfoStatus.AVAILABLE to tasksApi.getTaskDueDateInfo(task.id).toView()
+            } catch (e: RestClientException) {
+                log.warn("due date info unavailable for task {}: {}", task.id, e.message)
+                DueDateInfoStatus.UNAVAILABLE to null
+            }
+        }
+        // 画面の出し分け用。実際の守りは complete() の認可。完了済みなら認可 API に聞かずに false
+        val canComplete = task.completedAt == null && authzClient.decide(user, "task:complete", task.createdBy).allowed
+        return TaskDetailView(
+            id = task.id,
+            title = task.title,
+            description = task.description,
+            dueDate = task.dueDate,
+            createdByName = task.createdByName,
+            createdAt = task.createdAt,
+            completedAt = task.completedAt,
+            canComplete = canComplete,
+            dueDateInfoStatus = status,
+            dueDateInfo = info,
+        )
+    }
+
+    private fun ApiTask.toSummary() =
+        TaskSummaryView(id = id, title = title, dueDate = dueDate, createdByName = createdByName, completedAt = completedAt)
 
     private fun ApiDueDateInfo.toView() = DueDateInfo(date = date, businessDay = businessDay, holidayName = holidayName)
 }

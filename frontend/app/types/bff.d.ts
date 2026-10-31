@@ -90,6 +90,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bff/tasks/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** タスクを完了にする（本人、または task-admin の社員。既に完了していれば何もせず現状を返す） */
+        post: operations["completeTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -121,6 +138,11 @@ export interface components {
             /** Format: date */
             dueDate?: string | null;
             createdByName: string;
+            /**
+             * Format: date-time
+             * @description 完了日時。null なら未完了
+             */
+            completedAt?: string | null;
         };
         DueDateInfo: {
             /** Format: date */
@@ -138,6 +160,13 @@ export interface components {
             createdByName: string;
             /** Format: date-time */
             createdAt: string;
+            /**
+             * Format: date-time
+             * @description 完了日時。null なら未完了
+             */
+            completedAt?: string | null;
+            /** @description 画面の出し分け用（「完了にする」ボタン）。実際の守りは BFF と認可 API が担う。完了済みなら false */
+            canComplete: boolean;
             dueDateInfoStatus: components["schemas"]["DueDateInfoStatus"];
             dueDateInfo?: components["schemas"]["DueDateInfo"] | null;
         };
@@ -359,6 +388,39 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetail"];
                 };
             };
+        };
+    };
+    completeTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 完了後の詳細（completedAt が入り、canComplete は false になる） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDetailView"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            /** @description 認可 API が拒否した（他人のタスク、task-viewer の社員） */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            404: components["responses"]["Problem"];
         };
     };
 }
