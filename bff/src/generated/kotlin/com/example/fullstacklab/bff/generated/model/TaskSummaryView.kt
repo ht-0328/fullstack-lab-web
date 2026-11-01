@@ -18,6 +18,7 @@ import jakarta.validation.Valid
  * @param title 
  * @param createdByName 
  * @param dueDate 
+ * @param completedAt 完了日時。null なら未完了
  */
 data class TaskSummaryView(
 
@@ -32,7 +33,10 @@ data class TaskSummaryView(
 
     @field:Valid
     @param:JsonProperty("dueDate")
-    @get:JsonProperty("dueDate") val dueDate: java.time.LocalDate? = null
+    @get:JsonProperty("dueDate") val dueDate: java.time.LocalDate? = null,
+
+    @param:JsonProperty("completedAt")
+    @get:JsonProperty("completedAt") val completedAt: java.time.OffsetDateTime? = null
 ) {
 
 }

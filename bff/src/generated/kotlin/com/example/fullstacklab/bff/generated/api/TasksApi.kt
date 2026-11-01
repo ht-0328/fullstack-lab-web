@@ -38,6 +38,17 @@ interface TasksApi {
 
     @RequestMapping(
         method = [RequestMethod.POST],
+        // "/bff/tasks/{id}/complete"
+        value = [PATH_COMPLETE_TASK],
+        produces = ["application/json", "application/problem+json"]
+    )
+    fun completeTask(
+        @PathVariable("id") id: kotlin.Long
+    ): ResponseEntity<TaskDetailView>
+
+
+    @RequestMapping(
+        method = [RequestMethod.POST],
         // "/bff/tasks"
         value = [PATH_CREATE_TASK],
         produces = ["application/json", "application/problem+json"],
@@ -69,6 +80,7 @@ interface TasksApi {
 
     companion object {
         //for your own safety never directly reuse these path definitions in tests
+        const val PATH_COMPLETE_TASK: String = "/bff/tasks/{id}/complete"
         const val PATH_CREATE_TASK: String = "/bff/tasks"
         const val PATH_GET_TASK_DETAIL: String = "/bff/tasks/{id}"
         const val PATH_LIST_TASKS: String = "/bff/tasks"

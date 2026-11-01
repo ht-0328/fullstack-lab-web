@@ -22,9 +22,11 @@ import jakarta.validation.Valid
  * @param title 
  * @param createdByName 
  * @param createdAt 
+ * @param canComplete 画面の出し分け用（「完了にする」ボタン）。実際の守りは BFF と認可 API が担う。完了済みなら false
  * @param dueDateInfoStatus 
  * @param description 
  * @param dueDate 
+ * @param completedAt 完了日時。null なら未完了
  * @param dueDateInfo 
  */
 data class TaskDetailView(
@@ -41,6 +43,9 @@ data class TaskDetailView(
     @param:JsonProperty("createdAt", required = true)
     @get:JsonProperty("createdAt", required = true) val createdAt: java.time.OffsetDateTime,
 
+    @param:JsonProperty("canComplete", required = true)
+    @get:JsonProperty("canComplete", required = true) val canComplete: kotlin.Boolean,
+
     @field:Valid
     @param:JsonProperty("dueDateInfoStatus", required = true)
     @get:JsonProperty("dueDateInfoStatus", required = true) val dueDateInfoStatus: DueDateInfoStatus,
@@ -51,6 +56,9 @@ data class TaskDetailView(
     @field:Valid
     @param:JsonProperty("dueDate")
     @get:JsonProperty("dueDate") val dueDate: java.time.LocalDate? = null,
+
+    @param:JsonProperty("completedAt")
+    @get:JsonProperty("completedAt") val completedAt: java.time.OffsetDateTime? = null,
 
     @field:Valid
     @param:JsonProperty("dueDateInfo")

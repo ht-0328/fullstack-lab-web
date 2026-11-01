@@ -23,7 +23,10 @@ import org.springframework.test.web.client.response.MockRestResponseCreators.wit
 import org.springframework.web.client.RestClient
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * BFF → 認可 API / API の通信と、認可・集約・縮退のロジックを確認する。
@@ -46,9 +49,10 @@ class TaskViewServiceTest {
         service = TaskViewService(TasksApi(apiBuilder.build()), AuthzClient(DecisionsApi(authzBuilder.build())))
     }
 
-    private fun taskJson(dueDate: String?, owner: String = "alice-id") =
+    private fun taskJson(dueDate: String?, owner: String = "alice-id", completedAt: String? = null) =
         """{"id":1,"title":"t","description":"d","dueDate":${dueDate?.let { "\"$it\"" }},""" +
-            """"createdBy":"$owner","createdByName":"alice","createdAt":"2026-10-28T00:00:00Z"}"""
+            """"createdBy":"$owner","createdByName":"alice","createdAt":"2026-10-28T00:00:00Z",""" +
+            """"completedAt":${completedAt?.let { "\"$it\"" }}}"""
 
     private fun expectDecision(action: String, allowed: Boolean) {
         authz.expect(requestTo("http://authz.test/authz/v1/decisions"))
@@ -111,6 +115,7 @@ class TaskViewServiceTest {
         api.expect(requestTo("http://api.test/api/tasks/1"))
             .andRespond(withSuccess(taskJson("2026-11-03"), MediaType.APPLICATION_JSON))
         expectDecision("task:read", true)
+        expectDecision("task:complete", true)
         api.expect(requestTo("http://api.test/api/tasks/1/due-date-info"))
             .andRespond(
                 withSuccess(
@@ -123,6 +128,7 @@ class TaskViewServiceTest {
 
         assertEquals(DueDateInfoStatus.AVAILABLE, view.dueDateInfoStatus)
         assertEquals("文化の日", view.dueDateInfo?.holidayName)
+        assertTrue(view.canComplete)
         api.verify()
     }
 
@@ -131,6 +137,7 @@ class TaskViewServiceTest {
         api.expect(requestTo("http://api.test/api/tasks/1"))
             .andRespond(withSuccess(taskJson("2099-12-31"), MediaType.APPLICATION_JSON))
         expectDecision("task:read", true)
+        expectDecision("task:complete", true)
         api.expect(requestTo("http://api.test/api/tasks/1/due-date-info"))
             .andRespond(withStatus(HttpStatus.BAD_GATEWAY))
 
@@ -145,11 +152,73 @@ class TaskViewServiceTest {
         api.expect(requestTo("http://api.test/api/tasks/1"))
             .andRespond(withSuccess(taskJson(null), MediaType.APPLICATION_JSON))
         expectDecision("task:read", true)
+        expectDecision("task:complete", true)
         api.expect(never(), requestTo("http://api.test/api/tasks/1/due-date-info"))
 
         val view = service.detail(alice, 1)
 
         assertEquals(DueDateInfoStatus.NO_DUE_DATE, view.dueDateInfoStatus)
         api.verify()
+    }
+
+    @Test
+    fun `canComplete follows authz decision`() {
+        api.expect(requestTo("http://api.test/api/tasks/1"))
+            .andRespond(withSuccess(taskJson(null), MediaType.APPLICATION_JSON))
+        expectDecision("task:read", true)
+        expectDecision("task:complete", false)
+
+        assertFalse(service.detail(carol, 1).canComplete)
+        authz.verify()
+    }
+
+    @Test
+    fun `completed task cannot be completed again and authz is not asked`() {
+        api.expect(requestTo("http://api.test/api/tasks/1"))
+            .andRespond(withSuccess(taskJson(null, completedAt = "2026-11-01T00:00:00Z"), MediaType.APPLICATION_JSON))
+        expectDecision("task:read", true)
+        // task:complete の期待は置かない。問い合わせがあれば MockRestServiceServer が失敗させる
+
+        val view = service.detail(alice, 1)
+
+        assertNotNull(view.completedAt)
+        assertFalse(view.canComplete)
+        authz.verify()
+    }
+
+    @Test
+    fun `denied complete does not call api`() {
+        api.expect(requestTo("http://api.test/api/tasks/1"))
+            .andRespond(withSuccess(taskJson(null), MediaType.APPLICATION_JSON))
+        expectDecision("task:complete", false)
+        api.expect(never(), requestTo("http://api.test/api/tasks/1/completion"))
+
+        assertFailsWith<ForbiddenException> { service.complete(carol, 1) }
+        api.verify()
+    }
+
+    @Test
+    fun `complete calls api and returns the completed detail`() {
+        api.expect(requestTo("http://api.test/api/tasks/1"))
+            .andRespond(withSuccess(taskJson(null), MediaType.APPLICATION_JSON))
+        expectDecision("task:complete", true)
+        api.expect(requestTo("http://api.test/api/tasks/1/completion"))
+            .andExpect(method(HttpMethod.POST))
+            .andRespond(withSuccess(taskJson(null, completedAt = "2026-11-01T00:00:00Z"), MediaType.APPLICATION_JSON))
+
+        val view = service.complete(alice, 1)
+
+        assertNotNull(view.completedAt)
+        assertFalse(view.canComplete, "completed task must not offer completion again")
+        api.verify()
+        authz.verify()
+    }
+
+    @Test
+    fun `completing a missing task is not found`() {
+        api.expect(requestTo("http://api.test/api/tasks/9"))
+            .andRespond(withStatus(HttpStatus.NOT_FOUND))
+
+        assertFailsWith<TaskNotFoundException> { service.complete(alice, 9) }
     }
 }

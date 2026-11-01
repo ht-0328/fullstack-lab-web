@@ -15,13 +15,18 @@ const isStaff = computed(() => me.value?.userType === 'STAFF')
     <p v-else-if="!tasks?.length" class="muted">タスクはまだありません。</p>
     <table v-else>
       <thead>
-        <tr><th>ID</th><th>タイトル</th><th>期限</th><th v-if="isStaff">登録者</th></tr>
+        <tr><th>ID</th><th>タイトル</th><th>期限</th><th>状態</th><th v-if="isStaff">登録者</th></tr>
       </thead>
       <tbody>
         <tr v-for="task in tasks" :key="task.id">
           <td>{{ task.id }}</td>
           <td><NuxtLink :to="`/tasks/${task.id}`">{{ task.title }}</NuxtLink></td>
           <td>{{ task.dueDate ?? '-' }}</td>
+          <!-- 完了したタスクも隠さず、印で見分ける（設計書 0004） -->
+          <td :data-testid="`task-status-${task.id}`">
+            <span v-if="task.completedAt">完了</span>
+            <span v-else class="muted">未完了</span>
+          </td>
           <td v-if="isStaff">{{ task.createdByName }}</td>
         </tr>
       </tbody>

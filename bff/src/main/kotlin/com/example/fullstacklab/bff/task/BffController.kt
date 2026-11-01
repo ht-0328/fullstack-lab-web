@@ -57,4 +57,7 @@ class BffController(
 
     override fun createTask(createTaskInput: CreateTaskInput): ResponseEntity<TaskSummaryView> =
         ResponseEntity.status(HttpStatus.CREATED).body(taskViewService.create(currentUserFactory.current(), createTaskInput))
+
+    override fun completeTask(id: Long): ResponseEntity<TaskDetailView> =
+        ResponseEntity.ok(taskViewService.complete(currentUserFactory.current(), id))
 }

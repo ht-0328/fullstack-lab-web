@@ -6,6 +6,28 @@ const { data: task, error } = await useAsyncData(
   `task-${id}`,
   async () => unwrap(await bff.GET('/bff/tasks/{id}', { params: { path: { id } } })),
 )
+const completeError = ref('')
+const completing = ref(false)
+
+// 完了はブラウザから同一オリジンの /bff/tasks/{id}/complete へ送る（ブラウザ → Nginx → BFF → 認可 API → API）。
+// 応答は完了後の詳細なので、そのまま画面を置き換える（canComplete が false になりボタンが消える）
+async function complete() {
+  completing.value = true
+  completeError.value = ''
+  try {
+    const { data, error: problem } = await useBff().POST('/bff/tasks/{id}/complete', { params: { path: { id } } })
+    if (problem || !data) {
+      // 403 は認可 API で拒否された場合（他人のタスク、task-viewer ロールの社員）
+      completeError.value = problem?.detail ?? '完了にできませんでした'
+      return
+    }
+    task.value = data
+  } catch (e: unknown) {
+    completeError.value = e instanceof Error ? e.message : '完了にできませんでした'
+  } finally {
+    completing.value = false
+  }
+}
 </script>
 
 <template>
@@ -34,8 +56,15 @@ const { data: task, error } = await useAsyncData(
           </tr>
           <tr><th>登録者</th><td>{{ task.createdByName }}</td></tr>
           <tr><th>登録日時</th><td>{{ task.createdAt }}</td></tr>
+          <tr>
+            <th>状態</th>
+            <td data-testid="completion-status">{{ task.completedAt ? `完了（${task.completedAt}）` : '未完了' }}</td>
+          </tr>
         </tbody>
       </table>
+      <!-- ボタンの有無は BFF の canComplete に従う（画面の出し分け）。守りは BFF と認可 API -->
+      <button v-if="task.canComplete" type="button" :disabled="completing" @click="complete">完了にする</button>
+      <p v-if="completeError" class="error">{{ completeError }}</p>
     </template>
     <p><NuxtLink to="/">← 一覧へ戻る</NuxtLink></p>
   </section>

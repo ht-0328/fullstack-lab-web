@@ -43,7 +43,7 @@ docker build --target test --network host -f bff/Dockerfile .   # クライア�
 
 ## E2E テスト（Playwright）
 
-[e2e/](e2e/) に、実ブラウザで画面を操作するテストがあります（ログイン、登録、詳細、認可による表示の違い、ログアウト、会員登録とパスワード変更）。全体構成（Nginx、IdP、BFF、API、DB）が起動している必要があるので、fullstack-lab の `scripts/e2e-test.sh` から実行します。ホストに Node.js やブラウザは不要です（Playwright の公式イメージを使います）。
+[e2e/](e2e/) に、実ブラウザで画面を操作するテストがあります（ログイン、登録、詳細、完了、認可による表示の違い、ログアウト、会員登録とパスワード変更）。全体構成（Nginx、IdP、BFF、API、DB）が起動している必要があるので、fullstack-lab の `scripts/e2e-test.sh` から実行します。ホストに Node.js やブラウザは不要です（Playwright の公式イメージを使います）。
 
 ```bash
 # fullstack-lab で

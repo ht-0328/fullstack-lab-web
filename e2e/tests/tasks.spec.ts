@@ -55,6 +55,50 @@ test.describe('タスク（画面 → BFF → 認可 API / API → DB / WireMock
     await expect(carol.locator('.error')).toHaveText('この操作は許可されていません')
   })
 
+  test('本人はタスクを完了にでき、詳細と一覧に完了が出る。完了済みにはボタンが出ない', async ({ page }) => {
+    await login(page, CUSTOMER_URL, 'alice')
+    const title = uniqueTitle('完了')
+    const id = await createTask(page, CUSTOMER_URL, title)
+    await expect(page.getByTestId('completion-status')).toHaveText('未完了')
+
+    await page.getByRole('button', { name: '完了にする' }).click()
+    await expect(page.getByTestId('completion-status')).toContainText('完了（')
+    await expect(page.getByRole('button', { name: '完了にする' })).toHaveCount(0)
+
+    await page.getByText('← 一覧へ戻る').click()
+    await expect(page.getByTestId(`task-status-${id}`)).toHaveText('完了')
+  })
+
+  test('task-viewer の社員には完了ボタンが出ず、直接呼んでも 403', async ({ browser }) => {
+    const alice = await (await browser.newContext()).newPage()
+    await login(alice, CUSTOMER_URL, 'alice')
+    const id = await createTask(alice, CUSTOMER_URL, uniqueTitle('社員は完了できない'))
+
+    const carol = await (await browser.newContext()).newPage()
+    await login(carol, STAFF_URL, 'carol')
+    await carol.goto(`${STAFF_URL}/tasks/${id}`)
+    await expect(carol.getByTestId('completion-status')).toHaveText('未完了')
+    await expect(carol.getByRole('button', { name: '完了にする' })).toHaveCount(0)
+
+    // 画面にボタンが無くても、同じセッションで直接送信すれば BFF（認可 API）が 403 で止める
+    const response = await carol.request.post(`${STAFF_URL}/bff/tasks/${id}/complete`)
+    expect(response.status()).toBe(403)
+    await carol.reload()
+    await expect(carol.getByTestId('completion-status')).toHaveText('未完了')
+  })
+
+  test('task-admin の社員は他人のタスクも完了にできる', async ({ browser }) => {
+    const alice = await (await browser.newContext()).newPage()
+    await login(alice, CUSTOMER_URL, 'alice')
+    const id = await createTask(alice, CUSTOMER_URL, uniqueTitle('管理者が完了'))
+
+    const dave = await (await browser.newContext()).newPage()
+    await login(dave, STAFF_URL, 'dave')
+    await dave.goto(`${STAFF_URL}/tasks/${id}`)
+    await dave.getByRole('button', { name: '完了にする' }).click()
+    await expect(dave.getByTestId('completion-status')).toContainText('完了（')
+  })
+
   test('task-admin の社員は登録できる', async ({ page }) => {
     await login(page, STAFF_URL, 'dave')
     await expect(page.getByText('＋ タスクを登録')).toBeVisible()
