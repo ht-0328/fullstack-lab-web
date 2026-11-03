@@ -8,11 +8,13 @@ WORKDIR /workspace/bff
 COPY openapi /workspace/openapi
 COPY bff/gradlew bff/settings.gradle.kts bff/build.gradle.kts bff/gradle.properties ./
 COPY bff/gradle gradle
+# Gradle のキャッシュはリポジトリごとに id で分け、sharing=locked で 1 つずつ使う。
+# Compose が複数のイメージを並列でビルドすると、共有のキャッシュのロックを取り合ってタイムアウトするため
 # 依存解決を先に行い、ソース変更時もこのレイヤーをキャッシュさせる。
 # 認証が必要なリポジトリ向けの資格情報は build secret で渡す（イメージには残らない。無ければ匿名で取得する）。
 # `gradle dependencies` が取得するのはメタデータまでで、jar 本体はコンパイル時に取得される。
 # そのため後続の Gradle 実行にも同じ secret を渡す
-RUN --mount=type=cache,target=/root/.gradle \
+RUN --mount=type=cache,id=gradle-bff,sharing=locked,target=/root/.gradle \
     --mount=type=secret,id=maven_repo_user,env=MAVEN_REPO_USER \
     --mount=type=secret,id=maven_repo_password,env=MAVEN_REPO_PASSWORD \
     ./gradlew dependencies --no-daemon -q > /dev/null
@@ -20,7 +22,7 @@ COPY bff/src src
 
 # 生成コードが契約と一致していることを確かめる。契約だけ直して生成し忘れた変更や、生成コードを手で直した変更をここで落とす
 FROM build AS check-generated
-RUN --mount=type=cache,target=/root/.gradle \
+RUN --mount=type=cache,id=gradle-bff,sharing=locked,target=/root/.gradle \
     --mount=type=secret,id=maven_repo_user,env=MAVEN_REPO_USER \
     --mount=type=secret,id=maven_repo_password,env=MAVEN_REPO_PASSWORD \
     cp -r src/generated /tmp/generated \
@@ -30,13 +32,13 @@ RUN --mount=type=cache,target=/root/.gradle \
 
 # docker build --target test で単体テストを実行する（ホスト側に JDK は不要）
 FROM check-generated AS test
-RUN --mount=type=cache,target=/root/.gradle \
+RUN --mount=type=cache,id=gradle-bff,sharing=locked,target=/root/.gradle \
     --mount=type=secret,id=maven_repo_user,env=MAVEN_REPO_USER \
     --mount=type=secret,id=maven_repo_password,env=MAVEN_REPO_PASSWORD \
     ./gradlew test --no-daemon
 
 FROM build AS package
-RUN --mount=type=cache,target=/root/.gradle \
+RUN --mount=type=cache,id=gradle-bff,sharing=locked,target=/root/.gradle \
     --mount=type=secret,id=maven_repo_user,env=MAVEN_REPO_USER \
     --mount=type=secret,id=maven_repo_password,env=MAVEN_REPO_PASSWORD \
     ./gradlew bootJar --no-daemon -x test
